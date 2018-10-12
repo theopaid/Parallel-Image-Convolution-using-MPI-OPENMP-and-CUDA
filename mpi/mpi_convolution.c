@@ -30,7 +30,6 @@ int main(int argc, char** argv) {
     MPI_Datatype RGBColumn;
     MPI_Datatype GreyRow;
     MPI_Datatype RGBRow;
-
     MPI_Request ToNorth;
     MPI_Request ToSouth;
     MPI_Request ToWest;
@@ -41,7 +40,7 @@ int main(int argc, char** argv) {
     MPI_Request FromEast;
 
     int North = NULL;
-	int South = NULL;
+    int South = NULL;
     int West = NULL;
     int East = NULL;
 
@@ -51,35 +50,35 @@ int main(int argc, char** argv) {
         // Each process will handle different bits of data
         int rows_divided = RowsDivision(n_processes, img_height, img_width);
         if (rows_divided <= 0 || img_height % rows_divided || n_processes % rows_divided || img_width % (columns_divided = n_processes / rows_divided)) {
-				fprintf(stderr, "%s: Cannot divide to processes\n", argv[0]);
-				MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-				return EXIT_FAILURE;
+                fprintf(stderr, "%s: Cannot divide to processes\n", argv[0]);
+                MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+                return EXIT_FAILURE;
         }
     }
     if (process_id != 0) {
-		my_img = malloc((strlen(argv[1])+1) * sizeof(char));
-		strcpy(my_img, argv[1]);
-	}
+        my_img = malloc((strlen(argv[1])+1) * sizeof(char));
+        strcpy(my_img, argv[1]);
+    }
 
     MPI_Bcast(&img_width, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&img_height, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&repetitions, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&img_type, 1, MPI_INT, 0, MPI_COMM_WORLD);
-	MPI_Bcast(&rows_divided, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&rows_divided, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&columns_divided 1, MPI_INT, 0, MPI_COMM_WORLD);
 
     RowsPerProcess = img_height / rows_divided;
     ColumnsPerProcess = img_width / columns_divided;
 
     MPI_Type_vector(RowsPerProcess, 1, ColumnsPerProcess+2, MPI_BYTE, &GreyColumn);
-	MPI_Type_commit(&GreyColumn);
-	MPI_Type_vector(RowsPerProcess, 3, 3*ColumnsPerProcess+6, MPI_BYTE, &RGBColumn);
-	MPI_Type_commit(&RGBColumn);
+    MPI_Type_commit(&GreyColumn);
+    MPI_Type_vector(RowsPerProcess, 3, 3*ColumnsPerProcess+6, MPI_BYTE, &RGBColumn);
+    MPI_Type_commit(&RGBColumn);
     
     MPI_Type_contiguous(ColumnsPerProcess, MPI_BYTE, &GreyRow);
-	MPI_Type_commit(&GreyRow);
-	MPI_Type_contiguous(3*ColumnsPerProcess, MPI_BYTE, &RGBRow);
-	MPI_Type_commit(&RGBRow);
+    MPI_Type_commit(&GreyRow);
+    MPI_Type_contiguous(3*ColumnsPerProcess, MPI_BYTE, &RGBRow);
+    MPI_Type_commit(&RGBRow);
 
     int starting_row = (process_id / columns_divided) * RowsPerProcess
     int starting_column = (process_id % columns_divided) * ColumnsPerProcess
@@ -87,55 +86,55 @@ int main(int argc, char** argv) {
     // Lets create some filters
     int i, j;
     int box_blur[3][3] = {{1, 1, 1}, {1, 1, 1}, {1, 1, 1}};
-	int gaussian_blur[3][3] = {{1, 2, 1}, {2, 4, 2}, {1, 2, 1}};
-	int edge_detection[3][3] = {{1, 4, 1}, {4, 8, 4}, {1, 4, 1}};
-	float **myFilter = malloc(3 * sizeof(float *));
-	for (i = 0 ; i < 3 ; i++)
-		myFilter[i] = malloc(3 * sizeof(float));
-	for (i = 0 ; i < 3 ; i++) {
-		for (j = 0 ; j < 3 ; j++){
-			// myFilter[i][j] = box_blur[i][j] / 9.0;
-			myFilter[i][j] = gaussian_blur[i][j] / 16.0;
-			// myFilter[i][j] = edge_detection[i][j] / 28.0;
-		}
-	}
+    int gaussian_blur[3][3] = {{1, 2, 1}, {2, 4, 2}, {1, 2, 1}};
+    int edge_detection[3][3] = {{1, 4, 1}, {4, 8, 4}, {1, 4, 1}};
+    float **myFilter = malloc(3 * sizeof(float *));
+    for (i = 0 ; i < 3 ; i++)
+        myFilter[i] = malloc(3 * sizeof(float));
+    for (i = 0 ; i < 3 ; i++) {
+        for (j = 0 ; j < 3 ; j++){
+            // myFilter[i][j] = box_blur[i][j] / 9.0;
+            myFilter[i][j] = gaussian_blur[i][j] / 16.0;
+            // myFilter[i][j] = edge_detection[i][j] / 28.0;
+        }
+    }
 
     uint8_t *src = NULL, *dst = NULL, *tmpbuf = NULL, *tmp = NULL;
-	MPI_File fh;
-	int filesize, bufsize, nbytes;
-	if (img_type == GREY) {
-		filesize = img_width * img_height;
-		bufsize = filesize / n_processes;
-		nbytes = bufsize / sizeof(uint8_t);
-		src = calloc((RowsPerProcess+2) * (ColumnsPerProcess+2), sizeof(uint8_t));
-		dst = calloc((RowsPerProcess+2) * (ColumnsPerProcess+2), sizeof(uint8_t));
-	} else if (img_type == RGB) {
-		filesize = img_width*3 * img_height;
-		bufsize = filesize / n_processes;
-		nbytes = bufsize / sizeof(uint8_t);
-		src = calloc((RowsPerProcess+2) * (ColumnsPerProcess*3+6), sizeof(uint8_t));
-		dst = calloc((RowsPerProcess+2) * (ColumnsPerProcess*3+6), sizeof(uint8_t));
-	}
-	if (src == NULL || dst == NULL) {
+    MPI_File fh;
+    int filesize, bufsize, nbytes;
+    if (img_type == GREY) {
+        filesize = img_width * img_height;
+        bufsize = filesize / n_processes;
+        nbytes = bufsize / sizeof(uint8_t);
+        src = calloc((RowsPerProcess+2) * (ColumnsPerProcess+2), sizeof(uint8_t));
+        dst = calloc((RowsPerProcess+2) * (ColumnsPerProcess+2), sizeof(uint8_t));
+    } else if (img_type == RGB) {
+        filesize = img_width*3 * img_height;
+        bufsize = filesize / n_processes;
+        nbytes = bufsize / sizeof(uint8_t);
+        src = calloc((RowsPerProcess+2) * (ColumnsPerProcess*3+6), sizeof(uint8_t));
+        dst = calloc((RowsPerProcess+2) * (ColumnsPerProcess*3+6), sizeof(uint8_t));
+    }
+    if (src == NULL || dst == NULL) {
         fprintf(stderr, "%s: Not enough memory\n", argv[0]);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         return EXIT_FAILURE;
-	}
+    }
 
     MPI_File_open(MPI_COMM_WORLD, my_img, MPI_MODE_RDONLY, MPI_INFO_NULL, &fh);
-	if (img_type == GREY) {
-		for (i = 1 ; i <= RowsPerProcess ; i++) {
-			MPI_File_seek(fh, (starting_row + i-1) * img_width + starting_column, MPI_SEEK_SET);
-			tmpbuf = offset(src, i, 1, ColumnsPerProcess+2);
-			MPI_File_read(fh, tmpbuf, ColumnsPerProcess, MPI_BYTE, &myStatus);
-		}
-	} else if (img_type == RGB) {
-		for (i = 1 ; i <= RowsPerProcess ; i++) {
-			MPI_File_seek(fh, 3*(starting_row + i-1) * img_width + 3*starting_column, MPI_SEEK_SET);
-			tmpbuf = offset(src, i, 3, ColumnsPerProcess*3+6);
-			MPI_File_read(fh, tmpbuf, ColumnsPerProcess*3, MPI_BYTE, &myStatus);
-		}
-	}
+    if (img_type == GREY) {
+        for (i = 1 ; i <= RowsPerProcess ; i++) {
+            MPI_File_seek(fh, (starting_row + i-1) * img_width + starting_column, MPI_SEEK_SET);
+            tmpbuf = offset(src, i, 1, ColumnsPerProcess+2);
+            MPI_File_read(fh, tmpbuf, ColumnsPerProcess, MPI_BYTE, &myStatus);
+        }
+    } else if (img_type == RGB) {
+        for (i = 1 ; i <= RowsPerProcess ; i++) {
+            MPI_File_seek(fh, 3*(starting_row + i-1) * img_width + 3*starting_column, MPI_SEEK_SET);
+            tmpbuf = offset(src, i, 3, ColumnsPerProcess*3+6);
+            MPI_File_read(fh, tmpbuf, ColumnsPerProcess*3, MPI_BYTE, &myStatus);
+        }
+    }
     MPI_File_close(&fh);
 
     if (starting_row != 0)
@@ -154,115 +153,115 @@ int main(int argc, char** argv) {
     int t;
     for (t = 0 ; t < repetitions ; t++) {
         // Send and request borders
-		if (img_type == GREY) {
-			if (North != NULL) {
-				MPI_Isend(offset(src, 1, 1, ColumnsPerProcess+2), 1, GreyRow, North, 0, MPI_COMM_WORLD, &ToNorth);
-				MPI_Irecv(offset(src, 0, 1, ColumnsPerProcess+2), 1, GreyRow, North, 0, MPI_COMM_WORLD, &FromNorth);
-			}
-			if (West != NULL) {
-				MPI_Isend(offset(src, 1, 1, ColumnsPerProcess+2), 1, GreyColumn,  West, 0, MPI_COMM_WORLD, &ToWest);
-				MPI_Irecv(offset(src, 1, 0, ColumnsPerProcess+2), 1, GreyColumn,  West, 0, MPI_COMM_WORLD, &FromWest);
-			}
-			if (South != NULL) {
-				MPI_Isend(offset(src, RowsPerProcess, 1, ColumnsPerProcess+2), 1, GreyRow, South, 0, MPI_COMM_WORLD, &ToSouth);
-				MPI_Irecv(offset(src, RowsPerProcess+1, 1, ColumnsPerProcess+2), 1, GreyRow, South, 0, MPI_COMM_WORLD, &FromSouth);
-			}
-			if (East != NULL) {
-				MPI_Isend(offset(src, 1, ColumnsPerProcess, ColumnsPerProcess+2), 1, GreyColumn,  East, 0, MPI_COMM_WORLD, &ToEast);
-				MPI_Irecv(offset(src, 1, ColumnsPerProcess+1, ColumnsPerProcess+2), 1, GreyColumn,  East, 0, MPI_COMM_WORLD, &FromEast);
-			}
-		} else if (img_type == RGB) {
-			if (North != NULL) {
-				MPI_Isend(offset(src, 1, 3, 3*ColumnsPerProcess+6), 1, RGBRow, North, 0, MPI_COMM_WORLD, &ToNorth);
-				MPI_Irecv(offset(src, 0, 3, 3*ColumnsPerProcess+6), 1, RGBRow, North, 0, MPI_COMM_WORLD, &FromNorth);
-			}
-			if (West != NULL) {
-				MPI_Isend(offset(src, 1, 3, 3*ColumnsPerProcess+6), 1, RGBColumn,  West, 0, MPI_COMM_WORLD, &ToWest);
-				MPI_Irecv(offset(src, 1, 0, 3*ColumnsPerProcess+6), 1, RGBColumn,  West, 0, MPI_COMM_WORLD, &FromWest);
-			}
-			if (South != NULL) {
-				MPI_Isend(offset(src, RowsPerProcess, 3, 3*ColumnsPerProcess+6), 1, RGBRow, South, 0, MPI_COMM_WORLD, &ToSouth);
-				MPI_Irecv(offset(src, RowsPerProcess+1, 3, 3*ColumnsPerProcess+6), 1, RGBRow, South, 0, MPI_COMM_WORLD, &FromSouth);
-			}
-			if (East != NULL) {
-				MPI_Isend(offset(src, 1, 3*ColumnsPerProcess, 3*ColumnsPerProcess+6), 1, RGBColumn,  East, 0, MPI_COMM_WORLD, &ToEast);
-				MPI_Irecv(offset(src, 1, 3*ColumnsPerProcess+3, 3*ColumnsPerProcess+6), 1, RGBColumn,  East, 0, MPI_COMM_WORLD, &FromEast);
-			}
-		}
+        if (img_type == GREY) {
+            if (North != NULL) {
+                MPI_Isend(offset(src, 1, 1, ColumnsPerProcess+2), 1, GreyRow, North, 0, MPI_COMM_WORLD, &ToNorth);
+                MPI_Irecv(offset(src, 0, 1, ColumnsPerProcess+2), 1, GreyRow, North, 0, MPI_COMM_WORLD, &FromNorth);
+            }
+            if (West != NULL) {
+                MPI_Isend(offset(src, 1, 1, ColumnsPerProcess+2), 1, GreyColumn,  West, 0, MPI_COMM_WORLD, &ToWest);
+                MPI_Irecv(offset(src, 1, 0, ColumnsPerProcess+2), 1, GreyColumn,  West, 0, MPI_COMM_WORLD, &FromWest);
+            }
+            if (South != NULL) {
+                MPI_Isend(offset(src, RowsPerProcess, 1, ColumnsPerProcess+2), 1, GreyRow, South, 0, MPI_COMM_WORLD, &ToSouth);
+                MPI_Irecv(offset(src, RowsPerProcess+1, 1, ColumnsPerProcess+2), 1, GreyRow, South, 0, MPI_COMM_WORLD, &FromSouth);
+            }
+            if (East != NULL) {
+                MPI_Isend(offset(src, 1, ColumnsPerProcess, ColumnsPerProcess+2), 1, GreyColumn,  East, 0, MPI_COMM_WORLD, &ToEast);
+                MPI_Irecv(offset(src, 1, ColumnsPerProcess+1, ColumnsPerProcess+2), 1, GreyColumn,  East, 0, MPI_COMM_WORLD, &FromEast);
+            }
+        } else if (img_type == RGB) {
+            if (North != NULL) {
+                MPI_Isend(offset(src, 1, 3, 3*ColumnsPerProcess+6), 1, RGBRow, North, 0, MPI_COMM_WORLD, &ToNorth);
+                MPI_Irecv(offset(src, 0, 3, 3*ColumnsPerProcess+6), 1, RGBRow, North, 0, MPI_COMM_WORLD, &FromNorth);
+            }
+            if (West != NULL) {
+                MPI_Isend(offset(src, 1, 3, 3*ColumnsPerProcess+6), 1, RGBColumn,  West, 0, MPI_COMM_WORLD, &ToWest);
+                MPI_Irecv(offset(src, 1, 0, 3*ColumnsPerProcess+6), 1, RGBColumn,  West, 0, MPI_COMM_WORLD, &FromWest);
+            }
+            if (South != NULL) {
+                MPI_Isend(offset(src, RowsPerProcess, 3, 3*ColumnsPerProcess+6), 1, RGBRow, South, 0, MPI_COMM_WORLD, &ToSouth);
+                MPI_Irecv(offset(src, RowsPerProcess+1, 3, 3*ColumnsPerProcess+6), 1, RGBRow, South, 0, MPI_COMM_WORLD, &FromSouth);
+            }
+            if (East != NULL) {
+                MPI_Isend(offset(src, 1, 3*ColumnsPerProcess, 3*ColumnsPerProcess+6), 1, RGBColumn,  East, 0, MPI_COMM_WORLD, &ToEast);
+                MPI_Irecv(offset(src, 1, 3*ColumnsPerProcess+3, 3*ColumnsPerProcess+6), 1, RGBColumn,  East, 0, MPI_COMM_WORLD, &FromEast);
+            }
+        }
 
-		// Inner Data Convolution
-		Convolution(src, dst, 1, RowsPerProcess, 1, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
+        // Inner Data Convolution
+        Convolution(src, dst, 1, RowsPerProcess, 1, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
 
 
         // Request and compute
-		if (North != -1) {
-			MPI_Wait(&FromNorth, &status);
-			Convolution(src, dst, 1, 1, 2, ColumnsPerProcess-1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
-		}
-		if (West != -1) {
-			MPI_Wait(&FromWest, &status);
-			Convolution(src, dst, 2, RowsPerProcess-1, 1, 1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
-		}
-		if (South != -1) {
-			MPI_Wait(&FromSouth, &status);
-			Convolution(src, dst, RowsPerProcess, RowsPerProcess, 2, ColumnsPerProcess-1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
-		}
-		if (East != -1) {
-			MPI_Wait(&FromEast, &status);
-			Convolution(src, dst, 2, RowsPerProcess-1, ColumnsPerProcess, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
-		}
+        if (North != -1) {
+            MPI_Wait(&FromNorth, &status);
+            Convolution(src, dst, 1, 1, 2, ColumnsPerProcess-1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
+        }
+        if (West != -1) {
+            MPI_Wait(&FromWest, &status);
+            Convolution(src, dst, 2, RowsPerProcess-1, 1, 1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
+        }
+        if (South != -1) {
+            MPI_Wait(&FromSouth, &status);
+            Convolution(src, dst, RowsPerProcess, RowsPerProcess, 2, ColumnsPerProcess-1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
+        }
+        if (East != -1) {
+            MPI_Wait(&FromEast, &status);
+            Convolution(src, dst, 2, RowsPerProcess-1, ColumnsPerProcess, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
+        }
 
-		// Corner data
-		if (North != NULL && West != NULL)
-			Convolution(src, dst, 1, 1, 1, 1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
-		if (West != NULL && South != NULL)
-			Convolution(src, dst, RowsPerProcess, RowsPerProcess, 1, 1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
-		if (South != NULL && East != NULL)
-			Convolution(src, dst, RowsPerProcess, RowsPerProcess, ColumnsPerProcess, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
-		if (East != NULL && North != NULL)
-			Convolution(src, dst, 1, 1, ColumnsPerProcess, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
+        // Corner data
+        if (North != NULL && West != NULL)
+            Convolution(src, dst, 1, 1, 1, 1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
+        if (West != NULL && South != NULL)
+            Convolution(src, dst, RowsPerProcess, RowsPerProcess, 1, 1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
+        if (South != NULL && East != NULL)
+            Convolution(src, dst, RowsPerProcess, RowsPerProcess, ColumnsPerProcess, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
+        if (East != NULL && North != NULL)
+            Convolution(src, dst, 1, 1, ColumnsPerProcess, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
 
-		// Wait to have sent all borders
-		if (North != NULL)
-			MPI_Wait(&ToNorth, &status);
-		if (West != NULL)
-			MPI_Wait(&ToWest, &status);
-		if (South != NULL)
-			MPI_Wait(&ToSouth, &status);
-		if (East != NULL)
-			MPI_Wait(&ToEast, &status);
+        // Wait to have sent all borders
+        if (North != NULL)
+            MPI_Wait(&ToNorth, &status);
+        if (West != NULL)
+            MPI_Wait(&ToWest, &status);
+        if (South != NULL)
+            MPI_Wait(&ToSouth, &status);
+        if (East != NULL)
+            MPI_Wait(&ToEast, &status);
 
-		// swap arrays
-		tmp = src;
+        // swap arrays
+        tmp = src;
         src = dst;
         dst = tmp;
-	}
+    }
 
     timer = MPI_Wtime() - timer;
 
     char *img_result = malloc((strlen(my_img) + 9) * sizeof(char));
-	strcpy(img_result, "blur_");
-	strcat(img_result, my_img);
-	MPI_File outFile;
-	MPI_File_open(MPI_COMM_WORLD, img_result, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &outFile);
-	if (my_imgType == GREY) {
-		for (i = 1 ; i <= RowsPerProcess ; i++) {
-			MPI_File_seek(outFile, (starting_row + i-1) * img_width + starting_column, MPI_SEEK_SET);
-			tmpbuf = offset(src, i, 1, ColumnsPerProcess+2);
-			MPI_File_write(outFile, tmpbuf, ColumnsPerProcess, MPI_BYTE, MPI_STATUS_IGNORE);
-		}
-	} else if (img_type == RGB) {
-		for (i = 1 ; i <= RowsPerProcess ; i++) {
-			MPI_File_seek(outFile, 3*(starting_row + i-1) * img_width + 3*starting_column, MPI_SEEK_SET);
-			tmpbuf = offset(src, i, 3, ColumnsPerProcess*3+6);
-			MPI_File_write(outFile, tmpbuf, ColumnsPerProcess*3, MPI_BYTE, MPI_STATUS_IGNORE);
-		}
-	}
-	MPI_File_close(&outFile);
+    strcpy(img_result, "blur_");
+    strcat(img_result, my_img);
+    MPI_File outFile;
+    MPI_File_open(MPI_COMM_WORLD, img_result, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &outFile);
+    if (my_imgType == GREY) {
+        for (i = 1 ; i <= RowsPerProcess ; i++) {
+            MPI_File_seek(outFile, (starting_row + i-1) * img_width + starting_column, MPI_SEEK_SET);
+            tmpbuf = offset(src, i, 1, ColumnsPerProcess+2);
+            MPI_File_write(outFile, tmpbuf, ColumnsPerProcess, MPI_BYTE, MPI_STATUS_IGNORE);
+        }
+    } else if (img_type == RGB) {
+        for (i = 1 ; i <= RowsPerProcess ; i++) {
+            MPI_File_seek(outFile, 3*(starting_row + i-1) * img_width + 3*starting_column, MPI_SEEK_SET);
+            tmpbuf = offset(src, i, 3, ColumnsPerProcess*3+6);
+            MPI_File_write(outFile, tmpbuf, ColumnsPerProcess*3, MPI_BYTE, MPI_STATUS_IGNORE);
+        }
+    }
+    MPI_File_close(&outFile);
 
     //We must compare the time of all the processes and find the maximum
-	double remote_time;
-	if (process_id != 0)
+    double remote_time;
+    if (process_id != 0)
         MPI_Send(&timer, 1, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
     else {
         for (i = 1 ; i != n_processes ; ++i) {
@@ -273,51 +272,51 @@ int main(int argc, char** argv) {
         printf("%f\n", timer);
     }
 
-	free(src);
+    free(src);
     free(dst);
     MPI_Type_free(&RGBColumn);
     MPI_Type_free(&RGBRow);
     MPI_Type_free(&GreyColumn);
     MPI_Type_free(&GreyRow);
 
-	MPI_Finalize();
-	return EXIT_SUCCESS;
+    MPI_Finalize();
+    return EXIT_SUCCESS;
 }
 
 void Convolution(uint8_t *src, uint8_t *dst, int start_row, int last_row, int start_column, int last_column, int img_width, int img_height, float** myFilter, color_t img_type) {
-	int i, j;
-	if (img_type == GREY) {
-		for (i = start_row ; i <= last_row ; i++)
-			for (j = start_column ; j <= last_column ; j++)
-				ConvolutionforGrey(src, dst, i, j, img_width+2, img_height, myFilter);
-	} else if (img_type == RGB) {
-		for (i = start_row ; i <= last_row ; i++)
-			for (j = start_column ; j <= last_column ; j++)
-				ConvolutionforRGB(src, dst, i, j*3, img_width*3+6, img_height, myFilter);
-	} 
+    int i, j;
+    if (img_type == GREY) {
+        for (i = start_row ; i <= last_row ; i++)
+            for (j = start_column ; j <= last_column ; j++)
+                ConvolutionforGrey(src, dst, i, j, img_width+2, img_height, myFilter);
+    } else if (img_type == RGB) {
+        for (i = start_row ; i <= last_row ; i++)
+            for (j = start_column ; j <= last_column ; j++)
+                ConvolutionforRGB(src, dst, i, j*3, img_width*3+6, img_height, myFilter);
+    } 
 }
 
 void ConvolutionforGrey(uint8_t *src, uint8_t *dst, int x, int y, int img_width, int img_height, float** myFilter) {
-	int i, j, k, l;
-	float afterFilter = 0;
-	for (i = x-1, k = 0 ; i <= x+1 ; i++, k++)
-		for (j = y-1, l = 0 ; j <= y+1 ; j++, l++)
-			afterFilter += src[img_width * i + j] * myFilter[k][l];
-	dst[img_width * x + y] = afterFilter;
+    int i, j, k, l;
+    float afterFilter = 0;
+    for (i = x-1, k = 0 ; i <= x+1 ; i++, k++)
+        for (j = y-1, l = 0 ; j <= y+1 ; j++, l++)
+            afterFilter += src[img_width * i + j] * myFilter[k][l];
+    dst[img_width * x + y] = afterFilter;
 }
 
 void ConvolutionforRGB(uint8_t *src, uint8_t *dst, int x, int y, int img_width, int img_height, float** myFilter) {
-	int i, j, k, l;
-	float afterFilterforRED = 0, afterFilterforGREEN = 0, afterFilterforBLUE = 0;
-	for (i = x-1, k = 0 ; i <= x+1 ; i++, k++)
-		for (j = y-3, l = 0 ; j <= y+3 ; j+=3, l++){
-			afterFilterforRED += src[img_width * i + j]* myFilter[k][l];
-			f += src[img_width * i + j+1] * myFilter[k][l];
-			afterFilterforBLUE += src[img_width * i + j+2] * myFilter[k][l];
-		}
-	dst[img_width * x + y] = afterFilterforRED;
-	dst[img_width * x + y+1] = f;
-	dst[img_width * x + y+2] = afterFilterforBLUE;
+    int i, j, k, l;
+    float afterFilterforRED = 0, afterFilterforGREEN = 0, afterFilterforBLUE = 0;
+    for (i = x-1, k = 0 ; i <= x+1 ; i++, k++)
+        for (j = y-3, l = 0 ; j <= y+3 ; j+=3, l++){
+            afterFilterforRED += src[img_width * i + j]* myFilter[k][l];
+            f += src[img_width * i + j+1] * myFilter[k][l];
+            afterFilterforBLUE += src[img_width * i + j+2] * myFilter[k][l];
+        }
+    dst[img_width * x + y] = afterFilterforRED;
+    dst[img_width * x + y+1] = f;
+    dst[img_width * x + y+2] = afterFilterforBLUE;
 }
 
 uint8_t *offset(uint8_t *src_array, int i, int j, int img_width) {
@@ -325,25 +324,25 @@ uint8_t *offset(uint8_t *src_array, int i, int j, int img_width) {
 }
 
 void Usage(int argc, char **argv, char **my_img, int *img_width, int *img_height, int *repetitions, color_t *img_type) {
-	if (argc == 6 && !strcmp(argv[5], "grey")) {
-		*my_img = malloc((strlen(argv[1])+1) * sizeof(char));
-		strcpy(*my_img, argv[1]);	
-		*img_width = atoi(argv[2]);
-		*img_height = atoi(argv[3]);
-		*repetitions = atoi(argv[4]);
-		*img_type = GREY;
-	} else if (argc == 6 && !strcmp(argv[5], "rgb")) {
-		*my_img = malloc((strlen(argv[1])+1) * sizeof(char));
-		strcpy(*my_img, argv[1]);	
-		*img_width = atoi(argv[2]);
-		*img_height = atoi(argv[3]);
-		*repetitions = atoi(argv[4]);
-		*img_type = RGB;
-	} else {
-		fprintf(stderr, "\nError Input!\n%s Image_name width height repetitions [rgb/grey].\n\n", argv[0]);
-		MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
-		exit(EXIT_FAILURE);
-	}
+    if (argc == 6 && !strcmp(argv[5], "grey")) {
+        *my_img = malloc((strlen(argv[1])+1) * sizeof(char));
+        strcpy(*my_img, argv[1]);	
+        *img_width = atoi(argv[2]);
+        *img_height = atoi(argv[3]);
+        *repetitions = atoi(argv[4]);
+        *img_type = GREY;
+    } else if (argc == 6 && !strcmp(argv[5], "rgb")) {
+        *my_img = malloc((strlen(argv[1])+1) * sizeof(char));
+        strcpy(*my_img, argv[1]);	
+        *img_width = atoi(argv[2]);
+        *img_height = atoi(argv[3]);
+        *repetitions = atoi(argv[4]);
+        *img_type = RGB;
+    } else {
+        fprintf(stderr, "\nError Input!\n%s Image_name width height repetitions [rgb/grey].\n\n", argv[0]);
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+        exit(EXIT_FAILURE);
+    }
 }
 
 int RowsDivision(int n_processes, rows, columns) {
