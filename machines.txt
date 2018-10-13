@@ -1,4 +1,3 @@
-linux01.di.uoa.gr:4
 linux02.di.uoa.gr:4
 linux03.di.uoa.gr:4
 linux04.di.uoa.gr:4
@@ -17,8 +16,7 @@ linux16.di.uoa.gr:4
 linux17.di.uoa.gr:4
 linux18.di.uoa.gr:4
 linux19.di.uoa.gr:4
-linux20.di.uoa.gr:4
-linux21.di.uoa.gr:4
+linux20.di.uoa.gr:4,
 linux22.di.uoa.gr:4
 linux24.di.uoa.gr:4
 linux25.di.uoa.gr:4
