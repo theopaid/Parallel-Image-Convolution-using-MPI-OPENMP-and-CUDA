@@ -39,16 +39,18 @@ int main(int argc, char** argv) {
     MPI_Request FromWest;
     MPI_Request FromEast;
 
-    int North = NULL;
-    int South = NULL;
-    int West = NULL;
-    int East = NULL;
+    int North = -1;
+    int South = -1;
+    int West = -1;
+    int East = -1;
+
+    int rows_divided, columns_divided;
 
     // Checking validity of inputs
     if(process_id == 0) {
-        Usage(argc, argv, &input_img, &img_width, &img_height, &repetitions, &img_type);
+        Usage(argc, argv, &my_img, &img_width, &img_height, &repetitions, &img_type);
         // Each process will handle different bits of data
-        int rows_divided = RowsDivision(n_processes, img_height, img_width);
+        rows_divided = RowsDivision(n_processes, img_height, img_width);
         if (rows_divided <= 0 || img_height % rows_divided || n_processes % rows_divided || img_width % (columns_divided = n_processes / rows_divided)) {
                 fprintf(stderr, "%s: Cannot divide to processes\n", argv[0]);
                 MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
@@ -65,10 +67,10 @@ int main(int argc, char** argv) {
     MPI_Bcast(&repetitions, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&img_type, 1, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Bcast(&rows_divided, 1, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&columns_divided 1, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Bcast(&columns_divided, 1, MPI_INT, 0, MPI_COMM_WORLD);
 
-    RowsPerProcess = img_height / rows_divided;
-    ColumnsPerProcess = img_width / columns_divided;
+    int RowsPerProcess = img_height / rows_divided;
+    int ColumnsPerProcess = img_width / columns_divided;
 
     MPI_Type_vector(RowsPerProcess, 1, ColumnsPerProcess+2, MPI_BYTE, &GreyColumn);
     MPI_Type_commit(&GreyColumn);
@@ -80,8 +82,8 @@ int main(int argc, char** argv) {
     MPI_Type_contiguous(3*ColumnsPerProcess, MPI_BYTE, &RGBRow);
     MPI_Type_commit(&RGBRow);
 
-    int starting_row = (process_id / columns_divided) * RowsPerProcess
-    int starting_column = (process_id % columns_divided) * ColumnsPerProcess
+    int starting_row = (process_id / columns_divided) * RowsPerProcess;
+    int starting_column = (process_id % columns_divided) * ColumnsPerProcess;
 
     // Lets create some filters
     int i, j;
@@ -154,36 +156,36 @@ int main(int argc, char** argv) {
     for (t = 0 ; t < repetitions ; t++) {
         // Send and request borders
         if (img_type == GREY) {
-            if (North != NULL) {
+            if (North != -1) {
                 MPI_Isend(offset(src, 1, 1, ColumnsPerProcess+2), 1, GreyRow, North, 0, MPI_COMM_WORLD, &ToNorth);
                 MPI_Irecv(offset(src, 0, 1, ColumnsPerProcess+2), 1, GreyRow, North, 0, MPI_COMM_WORLD, &FromNorth);
             }
-            if (West != NULL) {
+            if (West != -1) {
                 MPI_Isend(offset(src, 1, 1, ColumnsPerProcess+2), 1, GreyColumn,  West, 0, MPI_COMM_WORLD, &ToWest);
                 MPI_Irecv(offset(src, 1, 0, ColumnsPerProcess+2), 1, GreyColumn,  West, 0, MPI_COMM_WORLD, &FromWest);
             }
-            if (South != NULL) {
+            if (South != -1) {
                 MPI_Isend(offset(src, RowsPerProcess, 1, ColumnsPerProcess+2), 1, GreyRow, South, 0, MPI_COMM_WORLD, &ToSouth);
                 MPI_Irecv(offset(src, RowsPerProcess+1, 1, ColumnsPerProcess+2), 1, GreyRow, South, 0, MPI_COMM_WORLD, &FromSouth);
             }
-            if (East != NULL) {
+            if (East != -1) {
                 MPI_Isend(offset(src, 1, ColumnsPerProcess, ColumnsPerProcess+2), 1, GreyColumn,  East, 0, MPI_COMM_WORLD, &ToEast);
                 MPI_Irecv(offset(src, 1, ColumnsPerProcess+1, ColumnsPerProcess+2), 1, GreyColumn,  East, 0, MPI_COMM_WORLD, &FromEast);
             }
         } else if (img_type == RGB) {
-            if (North != NULL) {
+            if (North != -1) {
                 MPI_Isend(offset(src, 1, 3, 3*ColumnsPerProcess+6), 1, RGBRow, North, 0, MPI_COMM_WORLD, &ToNorth);
                 MPI_Irecv(offset(src, 0, 3, 3*ColumnsPerProcess+6), 1, RGBRow, North, 0, MPI_COMM_WORLD, &FromNorth);
             }
-            if (West != NULL) {
+            if (West != -1) {
                 MPI_Isend(offset(src, 1, 3, 3*ColumnsPerProcess+6), 1, RGBColumn,  West, 0, MPI_COMM_WORLD, &ToWest);
                 MPI_Irecv(offset(src, 1, 0, 3*ColumnsPerProcess+6), 1, RGBColumn,  West, 0, MPI_COMM_WORLD, &FromWest);
             }
-            if (South != NULL) {
+            if (South != -1) {
                 MPI_Isend(offset(src, RowsPerProcess, 3, 3*ColumnsPerProcess+6), 1, RGBRow, South, 0, MPI_COMM_WORLD, &ToSouth);
                 MPI_Irecv(offset(src, RowsPerProcess+1, 3, 3*ColumnsPerProcess+6), 1, RGBRow, South, 0, MPI_COMM_WORLD, &FromSouth);
             }
-            if (East != NULL) {
+            if (East != -1) {
                 MPI_Isend(offset(src, 1, 3*ColumnsPerProcess, 3*ColumnsPerProcess+6), 1, RGBColumn,  East, 0, MPI_COMM_WORLD, &ToEast);
                 MPI_Irecv(offset(src, 1, 3*ColumnsPerProcess+3, 3*ColumnsPerProcess+6), 1, RGBColumn,  East, 0, MPI_COMM_WORLD, &FromEast);
             }
@@ -195,41 +197,41 @@ int main(int argc, char** argv) {
 
         // Request and compute
         if (North != -1) {
-            MPI_Wait(&FromNorth, &status);
+            MPI_Wait(&FromNorth, &myStatus);
             Convolution(src, dst, 1, 1, 2, ColumnsPerProcess-1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
         }
         if (West != -1) {
-            MPI_Wait(&FromWest, &status);
+            MPI_Wait(&FromWest, &myStatus);
             Convolution(src, dst, 2, RowsPerProcess-1, 1, 1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
         }
         if (South != -1) {
-            MPI_Wait(&FromSouth, &status);
+            MPI_Wait(&FromSouth, &myStatus);
             Convolution(src, dst, RowsPerProcess, RowsPerProcess, 2, ColumnsPerProcess-1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
         }
         if (East != -1) {
-            MPI_Wait(&FromEast, &status);
+            MPI_Wait(&FromEast, &myStatus);
             Convolution(src, dst, 2, RowsPerProcess-1, ColumnsPerProcess, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
         }
 
         // Corner data
-        if (North != NULL && West != NULL)
+        if (North != -1 && West != -1)
             Convolution(src, dst, 1, 1, 1, 1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
-        if (West != NULL && South != NULL)
+        if (West != -1 && South != -1)
             Convolution(src, dst, RowsPerProcess, RowsPerProcess, 1, 1, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
-        if (South != NULL && East != NULL)
+        if (South != -1 && East != -1)
             Convolution(src, dst, RowsPerProcess, RowsPerProcess, ColumnsPerProcess, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
-        if (East != NULL && North != NULL)
+        if (East != -1 && North != -1)
             Convolution(src, dst, 1, 1, ColumnsPerProcess, ColumnsPerProcess, ColumnsPerProcess, RowsPerProcess, myFilter, img_type);
 
         // Wait to have sent all borders
-        if (North != NULL)
-            MPI_Wait(&ToNorth, &status);
-        if (West != NULL)
-            MPI_Wait(&ToWest, &status);
-        if (South != NULL)
-            MPI_Wait(&ToSouth, &status);
-        if (East != NULL)
-            MPI_Wait(&ToEast, &status);
+        if (North != -1)
+            MPI_Wait(&ToNorth, &myStatus);
+        if (West != -1)
+            MPI_Wait(&ToWest, &myStatus);
+        if (South != -1)
+            MPI_Wait(&ToSouth, &myStatus);
+        if (East != -1)
+            MPI_Wait(&ToEast, &myStatus);
 
         // swap arrays
         tmp = src;
@@ -244,7 +246,7 @@ int main(int argc, char** argv) {
     strcat(img_result, my_img);
     MPI_File outFile;
     MPI_File_open(MPI_COMM_WORLD, img_result, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &outFile);
-    if (my_imgType == GREY) {
+    if (img_type == GREY) {
         for (i = 1 ; i <= RowsPerProcess ; i++) {
             MPI_File_seek(outFile, (starting_row + i-1) * img_width + starting_column, MPI_SEEK_SET);
             tmpbuf = offset(src, i, 1, ColumnsPerProcess+2);
@@ -311,11 +313,11 @@ void ConvolutionforRGB(uint8_t *src, uint8_t *dst, int x, int y, int img_width, 
     for (i = x-1, k = 0 ; i <= x+1 ; i++, k++)
         for (j = y-3, l = 0 ; j <= y+3 ; j+=3, l++){
             afterFilterforRED += src[img_width * i + j]* myFilter[k][l];
-            f += src[img_width * i + j+1] * myFilter[k][l];
+            afterFilterforGREEN += src[img_width * i + j+1] * myFilter[k][l];
             afterFilterforBLUE += src[img_width * i + j+2] * myFilter[k][l];
         }
     dst[img_width * x + y] = afterFilterforRED;
-    dst[img_width * x + y+1] = f;
+    dst[img_width * x + y+1] = afterFilterforGREEN;
     dst[img_width * x + y+2] = afterFilterforBLUE;
 }
 
@@ -345,7 +347,7 @@ void Usage(int argc, char **argv, char **my_img, int *img_width, int *img_height
     }
 }
 
-int RowsDivision(int n_processes, rows, columns) {
+int RowsDivision(int n_processes,int rows,int columns) {
     int perimeter, rows_to, columns_to, best = 0;
     int perimeter_min = rows + columns + 1;
     for (rows_to = 1 ; rows_to <= n_processes ; ++rows_to) {
