@@ -3,7 +3,8 @@
 #include <string.h>
 #include <fcntl.h>
 #include <stdint.h>
-#include "mpi.h"
+#include <mpi.h>
+#include <omp.h>
 
 typedef enum {GREY, RGB} color_t;
 
@@ -291,7 +292,7 @@ void Convolution(uint8_t *src, uint8_t *dst, int start_row, int last_row, int st
 #pragma omp parallel for shared(src, dst) schedule(static) collapse(3)
         for (i = start_row ; i <= last_row ; i++)
             for (j = start_column ; j <= last_column ; j++)
-                ConvolutionforGrey(src, dst, i, j, img_width+2, img_height, myFilter);
+                ConvolutionforGREY(src, dst, i, j, img_width+2, img_height, myFilter);
     } else if (img_type == RGB) {
 #pragma omp parallel for shared(src, dst) schedule(static) collapse(3)
         for (i = start_row ; i <= last_row ; i++)
@@ -300,7 +301,7 @@ void Convolution(uint8_t *src, uint8_t *dst, int start_row, int last_row, int st
     } 
 }
 
-void ConvolutionforGrey(uint8_t *src, uint8_t *dst, int x, int y, int img_width, int img_height, float** myFilter) {
+void ConvolutionforGREY(uint8_t *src, uint8_t *dst, int x, int y, int img_width, int img_height, float** myFilter) {
     int i, j, k, l;
     float afterFilter = 0;
     for (i = x-1, k = 0 ; i <= x+1 ; i++, k++)

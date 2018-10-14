@@ -3,7 +3,7 @@
 #include <string.h>
 #include <fcntl.h>
 #include <stdint.h>
-#include "mpi.h"
+#include <mpi.h>
 
 typedef enum {GREY, RGB} color_t;
 
